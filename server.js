@@ -57,26 +57,25 @@ app.post('/getAccessToken', async (req, res) => {
 });
 
 app.post('/generatePhrase', async (req, res) => {
-  const { access_token, mode, uid } = req.body;
-    
-  if (!access_token) {
-    return res.status(400).json({ error: 'Токен отсутствует' });
-  }
+  const { mode, uid } = req.body;
 
-    const docRef = db.collection('phrases').doc(uid);
-    const docSnap = await docRef.get();
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'API ключ отсутствует' });
 
-    const userPhrases = docSnap.exists ? docSnap.data().phrases || [] : [];
+  const docRef = db.collection('phrases').doc(uid);
+  const docSnap = await docRef.get();
+  const userPhrases = docSnap.exists ? docSnap.data().phrases || [] : [];
+
+  const prompt = `Придумай случайное слово или словосочетание для игры Активити по следующим правилам: 1. Фраза подходит для того, чтобы ее значение можно было объяснить при помощи ${mode === 'draw' ? 'рисунка' : 'жестов'}; 2. Если одно слово - это должно быть существительное; 3. Если два слова - сочетание прилагательного и существительного или двух существительных (можно с предлогом); 4. Требования к фразам: - Средний уровень сложности (не слишком просто, но и не профессиональные термины); - Никаких цветов (красный, синий и т.д.); - Никаких имен собственных (Москва, Иван и т.д.); - Никаких специфических профессиональных терминов;  5. Примеры хороших фраз: "Плотина", "Надувной матрас", "Гоночный трэк", "Волшебный единорог"; 6. Фразы должны быть понятными для большинства людей и легко изображаемыми; 7. Фраза не должна повторять или быть похожей на фразы из списка уже сгенерированных фраз: ${userPhrases.join(', ')} 8. Сгенерируй 1 вариант (только саму фразу без пояснений, ковычек и прочих символов). - Никаких времен года (летний, зимний) `;
+
   try {
-    const prompt = `Придумай случайное слово или словосочетание для игры Активити по следующим правилам: 1. Фраза подходит для того, чтобы ее значение можно было объяснить при помощи ${mode === 'draw' ? 'рисунка' : 'жестов'}; 2. Если одно слово - это должно быть существительное; 3. Если два слова - сочетание прилагательного и существительного или двух существительных (можно с предлогом); 4. Требования к фразам: - Средний уровень сложности (не слишком просто, но и не профессиональные термины); - Никаких цветов (красный, синий и т.д.); - Никаких имен собственных (Москва, Иван и т.д.); - Никаких специфических профессиональных терминов;  5. Примеры хороших фраз: "Плотина", "Надувной матрас", "Гоночный трэк", "Волшебный единорог"; 6. Фразы должны быть понятными для большинства людей и легко изображаемыми; 7. Фраза не должна повторять или быть похожей на фразы из списка уже сгенерированных фраз: ${userPhrases.join(', ')} 8. Сгенерируй 1 вариант (только саму фразу без пояснений, ковычек и прочих символов). - Никаких времен года (летний, зимний) `;
-
     const response = await axios.post(
-      'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
+      'https://api.deepseek.com/v1/chat/completions',
       {
-        model: "GigaChat",
+        model: 'deepseek-chat',
         messages: [
           {
-            role: "user",
+            role: 'user',
             content: prompt
           }
         ],
@@ -84,21 +83,19 @@ app.post('/generatePhrase', async (req, res) => {
       },
       {
         headers: {
-          'Authorization': `Bearer ${access_token}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
-        },
-        httpsAgent
+        }
       }
     );
-    
-    // Очищаем ответ от возможных лишних элементов
+
     const cleanPhrase = response.data.choices[0].message.content
       .replace(/[^a-zA-Zа-яА-ЯёЁ\s-]/g, '')
       .trim();
 
     res.json({ phrase: cleanPhrase });
   } catch (err) {
-    console.error('Ошибка генерации фразы:', err);
+    console.error('Ошибка генерации фразы:', err?.response?.data || err.message);
     res.status(500).json({ error: 'Не удалось сгенерировать фразу' });
   }
 });
